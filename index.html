@@ -1,0 +1,1421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Live OSINT World News Map - Tactical Dashboard</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/exifr/dist/lite.umd.js"></script>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+
+    <style>
+        :root { 
+            --bg: #0a0e0b; 
+            --accent: #4caf50; 
+            --accent-hover: #388e3c;
+            --text: #e0e0e0; 
+            --muted: #a1aabf; 
+            --glass-bg: rgba(13, 20, 16, 0.75);
+            --glass-border: rgba(76, 175, 80, 0.25);
+        }
+        
+        /* Mobile viewport fix */
+        body { margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; height: 100dvh; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg); color: var(--text); overflow: hidden; }
+
+        /* --- GLASSMORPHISM COMPONENTS --- */
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .glass-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #d1d5db;
+            padding: 5px 12px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.75rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex; align-items: center; justify-content: center; gap: 5px;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+        .glass-btn:hover { background: rgba(76, 175, 80, 0.15); color: #fff; border-color: rgba(76, 175, 80, 0.4); }
+        .glass-btn.active { background: rgba(76, 175, 80, 0.25); color: #fff; border-color: var(--accent); }
+        
+        .glass-input {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #fff;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.75rem;
+            outline: none;
+            width: 150px;
+            transition: all 0.2s;
+        }
+        .glass-input:focus { border-color: var(--accent); background: rgba(0, 0, 0, 0.6); width: 180px; }
+
+        /* --- TOP NAVIGATION BAR --- */
+        #top-bar {
+            height: 45px;
+            flex: 0 0 45px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 15px;
+            z-index: 3000;
+            border-bottom: 1px solid var(--glass-border);
+            overflow-x: auto;
+            scrollbar-width: none; 
+            -ms-overflow-style: none;  
+        }
+        #top-bar::-webkit-scrollbar { display: none; } 
+        
+        .top-group { display: flex; align-items: center; gap: 8px; }
+        
+        #brand-title { font-size: 1rem; font-weight: bold; letter-spacing: 2px; color: var(--accent); margin-right: 15px; display: flex; align-items: center; gap: 8px; white-space: nowrap;}
+        #sync-timer { font-family: monospace; font-size: 0.7rem; color: var(--muted); min-width: 45px;}
+        
+        .dropdown { display: inline-block; }
+        .dropdown-content {
+            display: none; position: fixed; right: 15px; top: 50px; min-width: 280px;
+            padding: 15px; border-radius: 6px; z-index: 3500;
+        }
+        .dropdown-content.show { display: block; animation: fadeIn 0.2s; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* --- MOBILE BOTTOM NAV --- */
+        #mobile-bottom-nav {
+            display: none;
+            height: 60px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border-top: 1px solid var(--glass-border);
+            justify-content: space-around;
+            align-items: center;
+            z-index: 4000;
+            flex-shrink: 0;
+        }
+        .nav-tab {
+            flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: var(--muted); font-size: 0.7rem; font-family: monospace; font-weight: bold;
+            background: transparent; border: none; cursor: pointer; transition: color 0.2s; height: 100%;
+        }
+        .nav-tab.active { color: var(--accent); }
+        .nav-tab svg { width: 22px; height: 22px; margin-bottom: 4px; fill: currentColor; }
+
+        /* --- MAIN LAYOUT --- */
+        #main-content { display: flex; flex: 1; overflow: hidden; position: relative; }
+        
+        #sidebar {
+            width: 420px; flex-shrink: 0; z-index: 2000;
+            display: flex; flex-direction: column;
+            border-right: 1px solid var(--glass-border);
+            transition: transform 0.3s ease-in-out;
+            background: var(--glass-bg);
+        }
+
+        #news-list { list-style: none; padding: 0; margin: 0; flex-grow: 1; overflow-y: auto; background-color: transparent;}
+        #news-list::-webkit-scrollbar { width: 4px; }
+        #news-list::-webkit-scrollbar-thumb { background: rgba(76, 175, 80, 0.3); border-radius: 2px; }
+        
+        .news-item { padding: 12px 15px; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer; border-left: 3px solid transparent; transition: background 0.2s;}
+        .news-item:hover { background-color: rgba(255,255,255,0.03); border-left: 3px solid var(--accent); }
+        .news-title { font-size: 0.9rem; font-weight: bold; margin: 0 0 6px 0; line-height: 1.3; color: #e0e0e0; display:flex; align-items:flex-start; gap:8px;}
+        .news-meta { font-size: 0.7rem; color: var(--muted); display: flex; justify-content: space-between; align-items: center;}
+        .news-time { font-family: monospace; color: #a1aabf; margin-bottom: 5px; display: block;}
+        .news-category { padding: 2px 5px; background: rgba(255,255,255,0.1); border-radius: 3px; font-weight: bold; color: #fff;}
+        .threat-tag { font-size: 0.65rem; padding: 2px 5px; border-radius: 3px; font-weight: bold; background: #d32f2f; color: white; display: inline-block; margin-left: 6px; vertical-align: middle; }
+
+        #map-container { flex-grow: 1; position: relative; height: 100%; width: 100%;}
+        #map { width: 100%; height: 100%; background-color: #000; z-index: 1;}
+
+        /* --- OVERLAYS & TOOLS --- */
+        .filter-group { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; margin-bottom: 10px;}
+        .hm-btn.active { background: rgba(211, 47, 47, 0.4); border-color: #ff5252; color: white;}
+        
+        .time-scrubber-container label { font-family: monospace; font-size: 0.75rem; color: #888; display: flex; justify-content: space-between; margin-bottom: 5px;}
+        #playback-label { color: var(--accent); font-weight: bold; }
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 12px; width: 12px; border-radius: 50%; background: var(--accent); cursor: pointer; margin-top: -4px; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+        #geofence-alert { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 2500; display: none; background: rgba(255, 165, 0, 0.2); border: 1px solid orange; color: orange; padding: 8px 15px; font-family: monospace; font-size: 0.8rem; border-radius: 4px; text-align: center; font-weight: bold; cursor: pointer; backdrop-filter: blur(5px); transition: all 0.2s; }
+        #geofence-alert:hover { background: rgba(255, 165, 0, 0.3); }
+        #measurement-log { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); z-index: 2500; display: none; background: rgba(25, 118, 210, 0.2); border: 1px solid #1976d2; color: #88ecff; padding: 6px 12px; font-family: monospace; font-size: 0.8rem; border-radius: 4px; text-align: center; font-weight: bold; backdrop-filter: blur(5px); }
+
+        #floating-clocks { position: absolute; bottom: 20px; right: 20px; padding: 10px 15px; border-radius: 6px; z-index: 2000; display: flex; gap: 15px; pointer-events: none;}
+        .clock { display: flex; flex-direction: column; align-items: center; }
+        .clock-label { font-size: 0.6rem; color: #888; text-transform: uppercase; font-family: monospace; margin-bottom: 2px;}
+        .clock-time { font-weight: bold; font-family: monospace; font-size: 0.85rem; color: #d1d5db;}
+        .clock-time.india { color: var(--accent); } .clock-time.israel { color: #66b2ff; } 
+
+        .radar-pulse { width: 10px; height: 10px; background-color: #555; border-radius: 50%; transition: background-color 0.3s; flex-shrink: 0;}
+        .radar-pulse.active { background-color: var(--accent); animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(76, 175, 80, 0); } 100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); } }
+
+        .spin { animation: spin 1s linear infinite; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        /* --- MAP & MARKER TWEAKS --- */
+        .leaflet-popup-content-wrapper, .leaflet-popup-tip { background-color: rgba(15, 20, 17, 0.95); color: #fff; border: 1px solid var(--glass-border); backdrop-filter: blur(5px);}
+        .leaflet-popup-content { margin: 10px; max-height: 350px; overflow-y: auto; width: 280px !important; scroll-behavior: smooth; }
+        .leaflet-popup-content::-webkit-scrollbar { width: 4px; }
+        .leaflet-popup-content::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 2px; }
+        .leaflet-popup-content h4 { margin: 0 0 10px 0; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; color: var(--accent); font-family: monospace; font-size: 1rem; position: sticky; top: 0; background: rgba(15, 20, 17, 0.95); z-index: 2;}
+        
+        .popup-news-item { margin-bottom: 15px; font-size: 0.85rem; border-left: 2px solid rgba(255,255,255,0.1); padding-left: 10px; transition: all 0.3s ease-in-out;}
+        .popup-news-item:hover { border-left-color: var(--accent); }
+        .popup-news-item a { color: #88ecff; text-decoration: none; display: flex; gap: 5px; margin-bottom: 4px; cursor: pointer; font-weight: bold; line-height: 1.3; }
+        .popup-news-item a:hover { text-decoration: underline; color: #fff; }
+        .popup-source { font-size: 0.65rem; color: var(--muted); text-transform: uppercase;}
+
+        @keyframes flashEffect {
+            0% { background-color: rgba(76, 175, 80, 0.3); border-left-color: #fff; padding: 5px 10px; }
+            10% { background-color: rgba(76, 175, 80, 0.5); border-left-color: #fff; }
+            100% { background-color: transparent; border-left-color: rgba(255,255,255,0.1); padding-top: 0px; padding-bottom: 0px;}
+        }
+        .flash-active { animation: flashEffect 2.5s ease-out forwards; border-left-color: var(--accent) !important; }
+
+        .custom-icon { display: flex; align-items: center; justify-content: center; font-size: 13px; color: white; filter: drop-shadow(0 0 5px rgba(0,0,0,0.8)); background: transparent; border: none; }
+        .custom-icon svg { width: 26px; height: 26px; }
+        
+        .custom-flight-icon, .custom-army-icon { background: transparent !important; border: none !important; }
+
+        .marker-cluster { background-clip: padding-box; border-radius: 20px; }
+        .marker-cluster div { width: 30px; height: 30px; margin-left: 5px; margin-top: 5px; text-align: center; border-radius: 15px; font-family: monospace; font-weight: bold; font-size: 13px; display: flex; align-items: center; justify-content: center; color: #fff; border: 1px solid rgba(255,255,255,0.5); box-shadow: 0 0 10px rgba(0,0,0,0.8); }
+        .marker-cluster-small div { background-color: rgba(56, 142, 60, 0.85); }
+        .marker-cluster-medium div { background-color: rgba(245, 124, 0, 0.85); }
+        .marker-cluster-large div { background-color: rgba(211, 47, 47, 0.85); }
+
+        .leaflet-control-layers-toggle { background-color: rgba(0,0,0,0.5) !important; border: 1px solid var(--glass-border); border-radius: 4px; backdrop-filter: blur(5px);}
+        .leaflet-control-layers-expanded { background: var(--glass-bg) !important; color: #fff; border: 1px solid var(--glass-border) !important; font-family: monospace; font-size: 0.8rem; backdrop-filter: blur(10px);}
+
+        /* --- MODALS --- */
+        .modal-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(5px); z-index: 5000; display: none; align-items: center; justify-content: center; }
+        .modal-container { background: rgba(13, 18, 15, 0.95); border: 1px solid var(--glass-border); width: 90%; max-width: 700px; max-height: 85vh; border-radius: 6px; box-shadow: 0 10px 40px rgba(0,0,0,0.9); display: flex; flex-direction: column; overflow: hidden; }
+        .modal-header { padding: 15px 20px; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.3);}
+        .modal-header h3 { margin: 0; font-size: 1rem; color: var(--accent); font-family: monospace; letter-spacing: 1px;}
+        .modal-close { background: none; border: none; color: #888; font-size: 1.5rem; cursor: pointer; line-height: 1;}
+        .modal-close:hover { color: #ff5252; }
+        .modal-body { padding: 25px; overflow-y: auto; flex-grow: 1; }
+        
+        #intel-title { font-size: 1.2rem; font-weight: bold; margin: 0 0 10px 0; line-height: 1.4; color: #fff; display: flex; gap: 10px; align-items: flex-start;}
+        #intel-date { font-family: monospace; color: #88ecff; font-size: 0.8rem; margin-bottom: 20px; display: block; border-bottom: 1px dashed rgba(255,255,255,0.1); padding-bottom: 10px;}
+        #intel-desc { font-size: 0.95rem; line-height: 1.6; color: #d1d5db; margin-bottom: 20px; }
+
+        #intel-media-container { width: 100%; text-align: center; margin-bottom: 20px; background: rgba(0,0,0,0.5); border-radius: 4px; border: 1px solid rgba(255,255,255,0.05); overflow: hidden; }
+        #intel-media-container img, #intel-media-container video { width: auto; max-width: 100%; max-height: 350px; display: block; margin: 0 auto; }
+
+        .intel-metrics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 15px; }
+        .metric-box { background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); padding: 10px; border-radius: 4px; text-align: center; font-family: monospace; }
+        .metric-title { font-size: 0.65rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; display: block; }
+        .metric-value { font-size: 1.1rem; font-weight: bold; color: #fff; line-height: 1.2; }
+        .val-critical { color: #ff5252; text-shadow: 0 0 5px rgba(255,82,82,0.5); } 
+        .val-elevated { color: #ffb74d; text-shadow: 0 0 5px rgba(255,183,77,0.5); } 
+        .val-stable { color: var(--accent); text-shadow: 0 0 5px rgba(76,175,80,0.5); }
+        .geo-alert { background: rgba(0, 229, 255, 0.08); border-left: 4px solid #00e5ff; padding: 10px; margin-bottom: 15px; font-family: monospace; font-size: 0.8rem; color: #88ecff; line-height: 1.5; }
+        
+        .advanced-tools-bar { display: flex; gap: 10px; margin-bottom: 15px; border-bottom: 1px dashed rgba(255,255,255,0.1); padding-bottom: 15px; flex-wrap: wrap;}
+        
+        #exif-results { display: none; background: rgba(0,0,0,0.4); padding: 10px; border-left: 3px solid #88ecff; font-family: monospace; font-size: 0.75rem; color: #bbb; white-space: pre-wrap; margin-bottom: 15px; overflow-x: auto;}
+        #intel-credibility { background: rgba(255, 183, 77, 0.1); border-left: 4px solid #ffb74d; padding: 10px; margin-bottom: 15px; font-family: monospace; color: #ffb74d; font-size: 0.8rem; display: none; }
+
+        #network-graph { width: 100%; height: 600px; background: rgba(0,0,0,0.4); border-radius: 4px; }
+        .d1-result-item { padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.2s; }
+        .d1-result-item:hover { background: rgba(255,255,255,0.03); border-left: 3px solid var(--accent); }
+        .d1-result-title { font-size: 0.95rem; font-weight: bold; margin: 0 0 5px 0; color: #88ecff; }
+        .d1-result-meta { font-family: monospace; font-size: 0.75rem; color: #888; margin-bottom: 5px;}
+
+        .modal-footer { padding: 12px 20px; border-top: 1px solid rgba(255,255,255,0.05); background: rgba(0,0,0,0.3); text-align: center; }
+        .action-btn { display: inline-block; background: rgba(255,255,255,0.05); color: #fff; text-decoration: none; padding: 10px 20px; border-radius: 4px; font-weight: bold; font-family: monospace; border: 1px solid rgba(255,255,255,0.1); transition: all 0.2s; width: 80%; cursor: pointer; letter-spacing: 1px;}
+        .action-btn:hover { background: rgba(76, 175, 80, 0.2); border-color: var(--accent); }
+
+
+        /* =========================================
+           RESPONSIVE UI MEDIA QUERIES (TABLET & MOBILE)
+           ========================================= */
+
+        @media (max-width: 1024px) {
+            #sidebar { width: 320px; }
+            .glass-input { width: 120px; }
+            .glass-input:focus { width: 140px; }
+            #floating-clocks { bottom: 10px; right: 10px; gap: 8px; padding: 6px 10px; }
+            #brand-title { font-size: 0.85rem; }
+        }
+
+        /* Mobile Native App View */
+        @media (max-width: 768px) {
+            #top-bar { 
+                padding: 5px 10px; height: 50px; flex: 0 0 50px; 
+                gap: 15px;
+            }
+            .glass-btn { padding: 6px 10px; font-size: 0.7rem; }
+            .glass-input { width: 110px; font-size: 0.7rem; padding: 6px 10px;}
+            .glass-input:focus { width: 130px; }
+            
+            .dropdown-content { right: 10px; left: 10px; top: 55px; min-width: auto; }
+            
+            #mobile-bottom-nav { display: flex; }
+            
+            #sidebar { 
+                position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+                z-index: 2500; display: flex;
+            }
+            #sidebar.hidden-mobile { transform: translateX(-100%); }
+            
+            #floating-clocks { display: none; }
+            #geofence-alert { width: 80%; font-size: 0.7rem; top: 5px; padding: 6px; }
+            #measurement-log { bottom: 20px; font-size: 0.7rem; padding: 4px 8px; }
+            
+            .leaflet-control-layers { margin-bottom: 20px !important; }
+
+            #ai-chat-panel { width: 100%; right: -100%; }
+
+            /* PERFECT MOBILE MODAL FIX */
+            .modal-overlay {
+                align-items: center; 
+                padding: 25px 10px 25px 10px; /* Top, Right, Bottom, Left */
+                box-sizing: border-box;
+            }
+            .modal-container {
+                height: 100%; 
+                max-height: 100%; /* Overrides the desktop 85vh limit */
+                width: 100%;
+                margin: 0; 
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- TOP NAVIGATION BAR -->
+    <div id="top-bar" class="glass-panel">
+        <div class="top-group">
+            <div id="brand-title">
+                <div id="radar-light" class="radar-pulse"></div>
+                OSINT CORE
+            </div>
+            <span id="sync-timer">01:00</span>
+            <button id="auto-sync-btn" class="glass-btn active" onclick="toggleAutoSync()">AUTO</button>
+            <button id="manual-sync-btn" class="glass-btn" onclick="fetchIntel()">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2v4c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6h4c0 5.52-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2zm10 4h-4V2l5 4z"/></svg>
+                SYNC
+            </button>
+        </div>
+
+        <div class="top-group">
+            <input type="text" id="recon-search" class="glass-input" placeholder="🔍 Filter local intel..." onkeyup="applyFilters()">
+            <div style="display:flex; align-items:center; gap:0;">
+                <input type="text" id="d1-search" class="glass-input" placeholder="🗄️ D1 Archive..." style="border-radius: 4px 0 0 4px; border-right: none;">
+                <button class="glass-btn" onclick="searchD1()" id="d1-search-btn" style="border-radius: 0 4px 4px 0; padding: 5px 10px;">SEARCH</button>
+            </div>
+        </div>
+
+        <div class="top-group">
+            <button class="glass-btn toggle-layer-btn" id="btn-airbase" onclick="toggleAirbases()">✈️ AIRBASES: OFF</button>
+            <button class="glass-btn toggle-layer-btn" id="btn-armybase" onclick="toggleArmyBases()">🛡️ ARMY BASES: OFF</button>
+            
+            <div class="dropdown">
+                <button class="glass-btn drop-btn" onclick="toggleDropdown('tools-menu', event)">⚙️ TOOLS ▼</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOOLS DROPDOWN MENU -->
+    <div id="tools-menu" class="dropdown-content glass-panel" onclick="event.stopPropagation()">
+        <button class="glass-btn" onclick="exportCSV()" style="width:100%; margin-bottom:10px;">📥 EXPORT INTEL TO CSV</button>
+        <button class="glass-btn" onclick="openGraphModal(true)" style="width:100%; margin-bottom:10px; border-color: #66b2ff;">🌐 GENERATE MACRO GRAPH</button>
+        <button class="glass-btn" onclick="openCustomLayerModal()" style="width:100%; margin-bottom:10px; border-color: #ba68c8;">🗺️ CUSTOM MAP LAYERS</button>
+        
+        <!-- FEATURE ADDITION: THEATER CLUSTERING & AI CHAT TOGGLES -->
+        <button class="glass-btn toggle-layer-btn" id="btn-clustering" onclick="toggleClustering()" style="width:100%; margin-bottom:10px; border-color: #ff5252;">🧬 THEATER CLUSTERING: OFF</button>
+        
+        
+        <div style="font-family: monospace; font-size: 0.7rem; color: #888; margin-bottom: 5px; font-weight:bold;">CATEGORY FILTERS</div>
+        <div class="filter-group" id="filter-container"></div>
+        
+        <div class="time-scrubber-container" style="margin-top:5px;">
+            <label>TIME PLAYBACK: <span id="playback-label">LIVE</span></label>
+            <input type="range" id="time-slider" min="0" max="100" value="100">
+        </div>
+    </div>
+
+    <!-- MAIN LAYOUT GRID -->
+    <div id="main-content">
+        <!-- SIDEBAR (News Feed) -->
+        <div id="sidebar" class="glass-panel">
+            <ul id="news-list"></ul>
+        </div>
+
+        <!-- MAP CONTAINER -->
+        <div id="map-container">
+            <div id="map"></div>
+            
+            <div id="geofence-alert" class="glass-panel" onclick="clearGeofence()">⚠️ SPATIAL GEOFENCE ACTIVE - CLICK TO CLEAR ⚠️</div>
+            <div id="measurement-log" class="glass-panel"></div>
+
+            <div id="floating-clocks" class="glass-panel">
+                <div class="clock"><span class="clock-label">Eastern</span><span class="clock-time" id="time-et">--:--:--</span></div>
+                <div class="clock"><span class="clock-label">Israel</span><span class="clock-time israel" id="time-il">--:--:--</span></div>
+                <div class="clock"><span class="clock-label">India</span><span class="clock-time india" id="time-in">--:--:--</span></div>
+            </div>
+
+            <!-- Standard Intel Modal -->
+            <div id="intel-modal-overlay" class="modal-overlay" onclick="closeModal()">
+                <div class="modal-container" onclick="event.stopPropagation()">
+                    <div class="modal-header">
+                        <h3>CLASSIFIED INTEL REPORT</h3>
+                        <button class="modal-close" onclick="closeModal()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <h2 id="intel-title">Headline</h2>
+                        <span id="intel-date">Date</span>
+                        
+                        <div id="intel-media-container" style="display:none;"></div>
+
+                        <!-- NATIVE AI BRIEFING SUMMARY BOX (Silent if empty) -->
+                        <div id="intel-ai-summary-box" class="glass-panel" style="display:none; padding: 12px; margin-bottom: 15px; border-left: 4px solid var(--accent); background: rgba(76, 175, 80, 0.08); font-family: monospace; font-size: 0.85rem;">
+                            <strong style="color: var(--accent); display: block; margin-bottom: 5px;">🤖 NATIVE AI BRIEFING SUMMARY:</strong>
+                            <span id="intel-ai-summary-text" style="color: #e0e0e0; line-height: 1.5;"></span>
+                        </div>
+
+                        <!-- FEATURE ADDITION: CRITICAL INFRASTRUCTURE PROXIMITY ALERT -->
+                        <div id="infra-alert" class="geo-alert" style="display:none; background: rgba(244, 67, 54, 0.08); border-left: 4px solid #f44336; color: #ffcdd2; margin-bottom: 15px;"></div>
+
+                        <div id="intel-metrics-container" style="display:none;">
+                            <div class="intel-metrics-grid">
+                                <div class="metric-box">
+                                    <span class="metric-title">Threat Score</span>
+                                    <span id="metric-threat" class="metric-value">--</span>
+                                </div>
+                                <div class="metric-box">
+                                    <span class="metric-title">Sentiment</span>
+                                    <span id="metric-sentiment" class="metric-value">--</span>
+                                </div>
+                                <div class="metric-box">
+                                    <span class="metric-title">Escalation Status</span>
+                                    <span id="metric-vector" class="metric-value" style="font-size: 0.8rem;">--</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="geo-corridor-alert" class="geo-alert" style="display:none;"></div>
+
+                        <!-- HISTORICAL CONTEXT OVERLAY ALERT -->
+                        <div id="hist-context-alert" class="geo-alert" style="display:none; background: rgba(255, 152, 0, 0.08); border-left: 4px solid #ff9800; color: #ffe0b2;"></div>
+                        
+                        <div class="advanced-tools-bar">
+                            <button class="glass-btn" id="btn-extract-exif" style="display:none;" onclick="extractEXIF()">🔍 EXTRACT EXIF</button>
+                            <button class="glass-btn" id="btn-entity-graph" style="display:none;" onclick="openGraphModal(false)">🔗 ENTITY GRAPH</button>
+                        </div>
+                        
+                        <div id="intel-credibility"></div>
+                        <div id="exif-results"></div>
+                        <div id="intel-desc">Desc</div>
+                    </div>
+                    <div class="modal-footer">
+                        <a href="#" id="intel-source-btn" class="action-btn" target="_blank">VIEW ORIGINAL TRANSMISSION</a>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Graph Modal -->
+            <div id="graph-modal-overlay" class="modal-overlay" onclick="closeModal()">
+                <div class="modal-container" style="max-width: 900px;" onclick="event.stopPropagation()">
+                    <div class="modal-header">
+                        <h3 id="graph-modal-title">LINK ANALYSIS: ENTITY GRAPH</h3>
+                        <button class="modal-close" onclick="closeModal()">&times;</button>
+                    </div>
+                    <div class="modal-body" style="padding:0;">
+                        <div id="network-graph"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- D1 DB Search Modal -->
+            <div id="d1-modal-overlay" class="modal-overlay" onclick="closeModal()">
+                <div class="modal-container" style="max-width: 800px;" onclick="event.stopPropagation()">
+                    <div class="modal-header">
+                        <h3>ARCHIVE SEARCH RESULTS (D1 DATABASE)</h3>
+                        <button class="modal-close" onclick="closeModal()">&times;</button>
+                    </div>
+                    <div class="modal-body" id="d1-results-container" style="padding: 0;"></div>
+                </div>
+            </div>
+
+            <!-- CUSTOM MAP LAYER MODAL -->
+            <div id="custom-layer-modal-overlay" class="modal-overlay" onclick="closeModal()">
+                <div class="modal-container" style="max-width: 550px;" onclick="event.stopPropagation()">
+                    <div class="modal-header">
+                        <h3>CUSTOM MAP LAYER INTEGRATIONS</h3>
+                        <button class="modal-close" onclick="closeModal()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div style="font-family: monospace; font-size: 0.8rem; color: #a1aabf; margin-bottom: 15px; line-height: 1.4;">
+                            Connect external XYZ/TMS tile servers (e.g., <code>https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png</code>) to project custom raster map overlays onto the tactical view.
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
+                            <input type="text" id="custom-layer-name" class="glass-input" style="width: 100%; box-sizing: border-box;" placeholder="Layer Name (e.g. Nautical Chart Grid)">
+                            <input type="text" id="custom-layer-url" class="glass-input" style="width: 100%; box-sizing: border-box;" placeholder="Tile URL Template https://...">
+                            <button class="glass-btn" onclick="addCustomMapLayerFromUI()" style="border-color: var(--accent); background: rgba(76, 175, 80, 0.2); padding: 8px;">➕ ADD CUSTOM LAYER</button>
+                        </div>
+                        <div style="font-family: monospace; font-size: 0.75rem; color: #888; margin-bottom: 8px; font-weight: bold;">ACTIVE CUSTOM LAYERS</div>
+                        <div id="custom-layers-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+
+    </div>
+
+    <!-- MOBILE NATIVE BOTTOM NAVIGATION BAR -->
+    <div id="mobile-bottom-nav">
+        <button class="nav-tab active" id="tab-feed" onclick="switchMobileTab('feed')">
+            <svg viewBox="0 0 24 24"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></svg>
+            LIVE FEED
+        </button>
+        <button class="nav-tab" id="tab-map" onclick="switchMobileTab('map')">
+            <svg viewBox="0 0 24 24"><path d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"/></svg>
+            TACTICAL MAP
+        </button>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+    <script>
+        const AGGREGATOR_URL = "https://osint-aggregator.sakariyag50.workers.dev/";
+
+        // --- HARDWARE BACK BUTTON INTERCEPTION ENGINE ---
+        window.addEventListener("popstate", function(event) {
+            // Unconditionally close all modals and dropdowns on back button press
+            document.querySelectorAll('.modal-overlay').forEach(el => el.style.display = 'none');
+            document.getElementById('tools-menu').classList.remove('show');
+            document.getElementById('ai-chat-panel').classList.remove('show');
+            sessionStorage.removeItem('activeModal');
+            sessionStorage.removeItem('activeDropdown');
+            const mediaContainer = document.getElementById('intel-media-container');
+            if (mediaContainer) { const video = mediaContainer.querySelector('video'); if (video) video.pause(); }
+
+            // Default to map tab on mobile if we hit rock bottom of history
+            if (window.innerWidth <= 768) {
+                document.getElementById('sidebar').classList.add('hidden-mobile');
+                document.getElementById('tab-map').classList.add('active');
+                document.getElementById('tab-feed').classList.remove('active');
+            }
+
+            // If history state exists, perfectly restore exactly what the user was looking at
+            if (event.state && event.state.opened) {
+                const id = event.state.opened;
+                if (id === 'intel-modal-overlay') {
+                    const newsId = sessionStorage.getItem('activeNewsId');
+                    if (newsId) openIntelModal(newsId, true);
+                } else if (id === 'graph-modal-overlay') {
+                    const isMacro = sessionStorage.getItem('isMacroGraph') === 'true';
+                    openGraphModal(isMacro, true);
+                } else if (id === 'd1-modal-overlay') {
+                    document.getElementById('d1-modal-overlay').style.display = 'flex';
+                    sessionStorage.setItem('activeModal', id);
+                } else if (id === 'custom-layer-modal-overlay') {
+                    document.getElementById('custom-layer-modal-overlay').style.display = 'flex';
+                    sessionStorage.setItem('activeModal', id);
+                } else if (id === 'tools-menu') {
+                    document.getElementById(id).classList.add('show');
+                    sessionStorage.setItem('activeDropdown', id);
+                } else if (id === 'ai-chat-panel') {
+                    document.getElementById(id).classList.add('show');
+                } else if (id === 'mobile-feed') {
+                    if (window.innerWidth <= 768) switchMobileTab('feed', true);
+                }
+            }
+        });
+
+        // Safe history injection
+        function pushOverlayState(id) {
+            history.pushState({opened: id}, "");
+        }
+
+        // The Ultimate Close Function (Simulates pressing physical Back Button)
+        function closeModal() {
+            if (history.state && history.state.opened) {
+                history.back();
+            } else {
+                document.querySelectorAll('.modal-overlay').forEach(el => el.style.display = 'none');
+                document.getElementById('tools-menu').classList.remove('show');
+                document.getElementById('ai-chat-panel').classList.remove('show');
+                sessionStorage.removeItem('activeModal');
+                sessionStorage.removeItem('activeDropdown');
+            }
+            const mediaContainer = document.getElementById('intel-media-container');
+            if (mediaContainer) { const video = mediaContainer.querySelector('video'); if (video) video.pause(); }
+        }
+
+        // --- UI Interactions ---
+        function toggleDropdown(id, event) {
+            event.stopPropagation();
+            const el = document.getElementById(id);
+            if (!el.classList.contains('show')) {
+                pushOverlayState(id);
+                el.classList.add('show');
+                sessionStorage.setItem('activeDropdown', id);
+            } else {
+                closeModal(); 
+            }
+        }
+        
+        window.onclick = function(event) {
+            if (!event.target.matches('.drop-btn')) {
+                const dropdowns = document.getElementsByClassName("dropdown-content");
+                for (let i = 0; i < dropdowns.length; i++) {
+                    if (dropdowns[i].classList.contains('show')) {
+                        closeModal(); 
+                    }
+                }
+            }
+        }
+
+        // Mobile Bottom Nav Switching Logic
+        function switchMobileTab(tab, fromHistory = false) {
+            const sidebar = document.getElementById('sidebar');
+            const feedTab = document.getElementById('tab-feed');
+            const mapTab = document.getElementById('tab-map');
+            
+            sessionStorage.setItem('mobileTab', tab); 
+            
+            if (tab === 'feed') {
+                if (!fromHistory && window.innerWidth <= 768) {
+                    pushOverlayState('mobile-feed');
+                }
+                sidebar.classList.remove('hidden-mobile');
+                feedTab.classList.add('active');
+                mapTab.classList.remove('active');
+            } else if (tab === 'map') {
+                if (!fromHistory && window.innerWidth <= 768 && feedTab.classList.contains('active')) {
+                    history.back();
+                }
+                sidebar.classList.add('hidden-mobile');
+                mapTab.classList.add('active');
+                feedTab.classList.remove('active');
+                setTimeout(() => { map.invalidateSize(); }, 300); 
+            }
+        }
+
+        // --- Map Setup with Persistence ---
+        const darkMap = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png');
+        const satelliteMap = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Tiles &copy; Esri' });
+        const topoMap = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png');
+        const streetMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' });
+        
+        const humanitarianMap = L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png');
+        const lightMap = L.tileLayer('https://cartodb-basemaps-{s}.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png');
+        
+        const savedMapState = sessionStorage.getItem('mapState');
+        let initCenter = [20, 30], initZoom = 3;
+        if (savedMapState) {
+            try {
+                const parsed = JSON.parse(savedMapState);
+                if(parsed && parsed.center) { initCenter = parsed.center; initZoom = parsed.zoom; }
+            } catch(e) {}
+        }
+
+        const map = L.map('map', { zoomControl: false, layers: [darkMap] }).setView(initCenter, initZoom);
+        
+        map.on('moveend', () => {
+            sessionStorage.setItem('mapState', JSON.stringify({center: map.getCenter(), zoom: map.getZoom()}));
+        });
+
+        const markersLayer = L.markerClusterGroup({ maxClusterRadius: 40, disableClusteringAtZoom: 12, spiderfyOnMaxZoom: true });
+        const airbaseLayer = L.layerGroup();
+        const armyBaseLayer = L.layerGroup();
+        // FEATURE ADDITION: THEATER CLUSTERING LAYER
+        const clusterPolygonLayer = L.layerGroup().addTo(map); 
+        let heatLayer = null;
+        
+        L.control.layers({ 
+            "Tactical Dark": darkMap, 
+            "Tactical Light": lightMap,
+            "Satellite Recon": satelliteMap, 
+            "Topographic Maps": topoMap,
+            "OSM Standard Grid": streetMap,
+            "Humanitarian Grid": humanitarianMap
+        }, { 
+            "Intel Nodes": markersLayer
+        }, {position: 'bottomleft'}).addTo(map);
+        
+        map.addLayer(markersLayer);
+        
+        const drawnItems = new L.FeatureGroup(); map.addLayer(drawnItems);
+        map.addControl(new L.Control.Draw({ 
+            edit: { featureGroup: drawnItems }, 
+            draw: { marker: false, circlemarker: false, circle: false, polyline: { showLength: true, metric: true }, polygon: { showArea: true, metric: true } } 
+        }));
+        
+        let activeGeofence = null;
+        map.on(L.Draw.Event.CREATED, function (e) {
+            drawnItems.clearLayers(); 
+            drawnItems.addLayer(e.layer);
+            let type = e.layerType;
+            let logElement = document.getElementById('measurement-log');
+            
+            if (type === 'polyline') {
+                activeGeofence = null; document.getElementById('geofence-alert').style.display = 'none';
+                let latlngs = e.layer.getLatLngs(); let line = turf.lineString(latlngs.map(l => [l.lng, l.lat])); let length = turf.length(line, {units: 'kilometers'});
+                logElement.innerText = `📏 CALC DISTANCE: ${length.toFixed(2)} KM`; logElement.style.display = 'block'; applyFilters();
+            } else if (type === 'polygon') {
+                activeGeofence = e.layer.toGeoJSON(); document.getElementById('geofence-alert').style.display = 'block';
+                let area = turf.area(activeGeofence) / 1000000; 
+                logElement.innerText = `📐 CALC AREA: ${area.toFixed(2)} SQ KM`; logElement.style.display = 'block'; applyFilters();
+            }
+        });
+
+        function clearGeofence() {
+            drawnItems.clearLayers(); activeGeofence = null;
+            document.getElementById('geofence-alert').style.display = 'none'; document.getElementById('measurement-log').style.display = 'none';
+            applyFilters();
+        }
+
+        // --- Custom Toggle Logics with Persistence ---
+        let airbasesActive = false;
+        function toggleAirbases(forceState) {
+            airbasesActive = forceState !== undefined ? forceState : !airbasesActive;
+            sessionStorage.setItem('airbasesActive', airbasesActive);
+            const btn = document.getElementById('btn-airbase');
+            if (airbasesActive) { map.addLayer(airbaseLayer); btn.classList.add('active'); btn.innerText = "✈️ AIRBASES: ON"; } 
+            else { map.removeLayer(airbaseLayer); btn.classList.remove('active'); btn.innerText = "✈️ AIRBASES: OFF"; }
+        }
+
+        let armyBasesActive = false;
+        function toggleArmyBases(forceState) {
+            armyBasesActive = forceState !== undefined ? forceState : !armyBasesActive;
+            sessionStorage.setItem('armyBasesActive', armyBasesActive);
+            const btn = document.getElementById('btn-armybase');
+            if (armyBasesActive) { map.addLayer(armyBaseLayer); btn.classList.add('active'); btn.innerText = "🛡️ ARMY BASES: ON"; } 
+            else { map.removeLayer(armyBaseLayer); btn.classList.remove('active'); btn.innerText = "🛡️ ARMY BASES: OFF"; }
+        }
+
+        // --- FEATURE ADDITION: THEATER CLUSTERING LOGIC ---
+        let isClusteringActive = false;
+        function toggleClustering() {
+            isClusteringActive = !isClusteringActive;
+            const btn = document.getElementById('btn-clustering');
+            if (isClusteringActive) {
+                btn.classList.add('active'); 
+                btn.style.background = 'rgba(211, 47, 47, 0.4)';
+                btn.style.borderColor = '#ff5252';
+                btn.innerText = "🧬 THEATER CLUSTERING: ON";
+            } else {
+                btn.classList.remove('active');
+                btn.style.background = '';
+                btn.style.borderColor = '#ff5252';
+                btn.innerText = "🧬 THEATER CLUSTERING: OFF";
+            }
+            renderMap();
+        }
+
+       
+
+        // --- LOCAL STORAGE CUSTOM MAP LAYERS ---
+        let customMapLayers = {};
+
+        function openCustomLayerModal(fromHistory = false) {
+            if (document.getElementById('tools-menu').classList.contains('show')) {
+                document.getElementById('tools-menu').classList.remove('show');
+                if (!fromHistory) history.replaceState({ opened: 'custom-layer-modal-overlay' }, "");
+            } else {
+                if (!fromHistory) pushOverlayState('custom-layer-modal-overlay');
+            }
+            
+            sessionStorage.setItem('activeModal', 'custom-layer-modal-overlay');
+            document.getElementById('custom-layer-modal-overlay').style.display = 'flex';
+            renderCustomLayersList();
+        }
+
+        // Load layers from browser's local storage on startup
+        function loadCustomLayersFromStorage() {
+            try {
+                const saved = localStorage.getItem('osint_custom_maps');
+                if (saved) {
+                    const layers = JSON.parse(saved);
+                    layers.forEach(l => {
+                        if (l.name && l.url && !customMapLayers[l.name]) {
+                            registerCustomLayer(l.name, l.url, false);
+                        }
+                    });
+                }
+            } catch(e) {}
+        }
+
+        function registerCustomLayer(name, urlTemplate, saveToStorage = true) {
+            if (customMapLayers[name]) return;
+            const tileLayer = L.tileLayer(urlTemplate, { attribution: 'Custom Layer' });
+            customMapLayers[name] = { url: urlTemplate, layer: tileLayer, active: false };
+            renderCustomLayersList();
+
+            if (saveToStorage) {
+                saveLayersToStorage();
+            }
+        }
+
+        function saveLayersToStorage() {
+            const payload = Object.keys(customMapLayers).map(k => ({ name: k, url: customMapLayers[k].url }));
+            localStorage.setItem('osint_custom_maps', JSON.stringify(payload));
+        }
+
+        function toggleCustomMapLayer(name) {
+            if (!customMapLayers[name]) return;
+            const item = customMapLayers[name];
+            if (item.active) {
+                map.removeLayer(item.layer);
+                item.active = false;
+            } else {
+                map.addLayer(item.layer);
+                item.active = true;
+            }
+            renderCustomLayersList();
+        }
+
+        function removeCustomMapLayer(name) {
+            if (!customMapLayers[name]) return;
+            if (customMapLayers[name].active) { map.removeLayer(customMapLayers[name].layer); }
+            delete customMapLayers[name];
+            renderCustomLayersList();
+            saveLayersToStorage();
+        }
+
+        function renderCustomLayersList() {
+            const listEl = document.getElementById('custom-layers-list');
+            if (!listEl) return;
+            listEl.innerHTML = '';
+            const names = Object.keys(customMapLayers);
+            if (names.length === 0) {
+                listEl.innerHTML = `<div style="font-family:monospace; font-size:0.75rem; color:#666;">No custom layers added yet.</div>`;
+                return;
+            }
+            names.forEach(name => {
+                const l = customMapLayers[name];
+                const div = document.createElement('div');
+                div.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); border-radius:4px; font-family:monospace; font-size:0.8rem;';
+                div.innerHTML = `
+                    <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:60%;">
+                        <strong style="color:#ba68c8;">${name}</strong><br>
+                        <span style="font-size:0.65rem; color:#888;">${l.url}</span>
+                    </div>
+                    <div style="display:flex; gap: 5px;">
+                        <button class="glass-btn ${l.active ? 'active' : ''}" onclick="toggleCustomMapLayer('${name}')">
+                            ${l.active ? 'ON' : 'OFF'}
+                        </button>
+                        <button class="glass-btn" style="color: #ff5252; border-color: rgba(255, 82, 82, 0.3); padding: 5px 8px;" onclick="removeCustomMapLayer('${name}')">
+                            🗑️
+                        </button>
+                    </div>
+                `;
+                listEl.appendChild(div);
+            });
+        }
+
+        function addCustomMapLayerFromUI() {
+            const nameInput = document.getElementById('custom-layer-name');
+            const urlInput = document.getElementById('custom-layer-url');
+            const name = nameInput.value.trim();
+            const url = urlInput.value.trim();
+            if (!name || !url) return alert("Please enter both Layer Name and Tile URL.");
+            registerCustomLayer(name, url, true);
+            nameInput.value = '';
+            urlInput.value = '';
+        }
+        function triggerProximityAudioAlert() {
+            try {
+                let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                let oscillator = audioCtx.createOscillator(); let gainNode = audioCtx.createGain();
+                oscillator.connect(gainNode); gainNode.connect(audioCtx.destination);
+                oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(950, audioCtx.currentTime); gainNode.gain.setValueAtTime(0.6, audioCtx.currentTime);
+                oscillator.start(); oscillator.stop(audioCtx.currentTime + 0.25); 
+            } catch (e) {}
+        }
+
+        function triggerVisualProximityAlert() {
+            let el = document.getElementById('geofence-alert');
+            el.style.background = 'rgba(255, 0, 0, 0.4)'; el.style.borderColor = '#ff5252'; el.style.color = '#fff'; el.innerText = '🚨 BREACH ALERT: NEW DATA DETECTED IN GEOFENCE! 🚨';
+            setTimeout(() => { el.style.background = 'rgba(255, 165, 0, 0.2)'; el.style.borderColor = 'orange'; el.style.color = 'orange'; el.innerText = '⚠️ SPATIAL GEOFENCE ACTIVE - CLICK TO CLEAR ⚠️'; }, 6000);
+        }
+
+        let activeMarkers = {}; let allNews = []; let filteredNews = []; 
+        let isFetching = false; let isAutoSync = true; let autoSyncTimer = 60; 
+        let displayLimit = 50; let currentFilter = 'all'; let isHeatmapActive = false;
+        let currentScrubTime = Infinity; let activeItemForGraph = null;
+
+        setInterval(() => {
+            const now = new Date();
+            document.getElementById('time-et').innerText = now.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour12: false });
+            document.getElementById('time-il').innerText = now.toLocaleTimeString('en-US', { timeZone: 'Asia/Jerusalem', hour12: false });
+            document.getElementById('time-in').innerText = now.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false });
+        }, 1000);
+
+        function generateFilters() {
+            const container = document.getElementById('filter-container');
+            let html = `<button class="glass-btn ${currentFilter === 'all' ? 'active' : ''}" style="flex-grow:1;" data-filter="all" onclick="setFilter('all', this)">ALL</button>`;
+            const uniqueCats = {};
+            allNews.forEach(n => { if (n.cat && n.cat.c) { uniqueCats[n.cat.c] = n.cat.c.replace('icon-', '').toUpperCase(); } });
+            for (const [catClass, catLabel] of Object.entries(uniqueCats)) {
+                html += `<button class="glass-btn ${currentFilter === catClass ? 'active' : ''}" style="flex-grow:1;" data-filter="${catClass}" onclick="setFilter('${catClass}', this)">${catLabel}</button>`;
+            }
+            html += `<button class="glass-btn hm-btn ${isHeatmapActive ? 'active' : ''}" style="flex-grow:1; border-color:#ff5252;" id="heatmap-toggle" onclick="toggleHeatmap(this)">🔥 HEATMAP</button>`;
+            container.innerHTML = html;
+        }
+
+        async function fetchIntel() {
+            if (isFetching) return; isFetching = true;
+            const btn = document.getElementById('manual-sync-btn'); btn.disabled = true; btn.querySelector('svg').classList.add('spin');
+            document.getElementById('radar-light').classList.add('active');
+
+            try {
+                const localSessionIdentityCache = new Set(allNews.map(n => n.id));
+                const response = await fetch(AGGREGATOR_URL);
+                if (!response.ok) throw new Error("Offline");
+                allNews = await response.json();
+                allNews.sort((a, b) => b.time - a.time);
+                
+                allNews.forEach(n => {
+                    const d = new Date(n.time);
+                    n.displayDate = `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} • ${d.toLocaleTimeString(undefined, { hour: '2-digit', minute:'2-digit', timeZoneName: 'short' })}`;
+                });
+
+                if (document.getElementById('time-slider').value == 100) currentScrubTime = Infinity;
+                generateFilters(); applyFilters();
+
+                if (localSessionIdentityCache.size > 0 && activeGeofence) {
+                    let geofenceBreached = false;
+                    allNews.forEach(n => {
+                        if (!localSessionIdentityCache.has(n.id)) {
+                            if(turf.booleanPointInPolygon(turf.point([n.loc.lng, n.loc.lat]), activeGeofence)) geofenceBreached = true;
+                        }
+                    });
+                    if (geofenceBreached) { triggerProximityAudioAlert(); triggerVisualProximityAlert(); }
+                }
+            } catch (error) {}
+
+            document.getElementById('radar-light').classList.remove('active'); btn.querySelector('svg').classList.remove('spin');
+            btn.disabled = false; isFetching = false;
+            if (isAutoSync) autoSyncTimer = 60; 
+
+            // --- INSTANT STATE RESTORATION ON REFRESH ---
+            if (!window.hasRestoredState) {
+                window.hasRestoredState = true;
+                
+                const savedSearch = sessionStorage.getItem('reconSearch');
+                if (savedSearch) { document.getElementById('recon-search').value = savedSearch; applyFilters(); }
+
+                const savedFilter = sessionStorage.getItem('currentFilter');
+                if (savedFilter && savedFilter !== 'all') {
+                    const filterBtn = document.querySelector(`.filter-group .glass-btn[data-filter="${savedFilter}"]`);
+                    if(filterBtn) setFilter(savedFilter, filterBtn);
+                }
+                
+                if (history.state && history.state.opened) {
+                    const id = history.state.opened;
+                    if (id === 'intel-modal-overlay') {
+                        const newsId = sessionStorage.getItem('activeNewsId');
+                        if (newsId) openIntelModal(newsId, true);
+                    } else if (id === 'graph-modal-overlay') {
+                        const isMacro = sessionStorage.getItem('isMacroGraph') === 'true';
+                        openGraphModal(isMacro, true);
+                    } else if (id === 'd1-modal-overlay') {
+                        document.getElementById('d1-modal-overlay').style.display = 'flex';
+                        sessionStorage.setItem('activeModal', id);
+                    } else if (id === 'custom-layer-modal-overlay') {
+                        document.getElementById('custom-layer-modal-overlay').style.display = 'flex';
+                        sessionStorage.setItem('activeModal', id);
+                    } else if (id === 'tools-menu') {
+                        document.getElementById(id).classList.add('show');
+                        sessionStorage.setItem('activeDropdown', id);
+                    } else if (id === 'ai-chat-panel') {
+                        document.getElementById(id).classList.add('show');
+                    } else if (id === 'mobile-feed') {
+                        if (window.innerWidth <= 768) switchMobileTab('feed', true);
+                    }
+                } else {
+                    const savedTab = sessionStorage.getItem('mobileTab');
+                    if (savedTab && window.innerWidth <= 768) switchMobileTab(savedTab, true);
+                }
+            }
+        }
+
+        async function searchD1(fromHistory = false) {
+            const input = document.getElementById('d1-search'); const btn = document.getElementById('d1-search-btn');
+            const term = input.value.trim(); if (!term) return;
+            btn.innerText = "⏳"; btn.disabled = true;
+
+            try {
+                const res = await fetch(`${AGGREGATOR_URL}?search=${encodeURIComponent(term)}&limit=100`);
+                if (!res.ok) throw new Error("API Failure");
+                const results = await res.json();
+                const container = document.getElementById('d1-results-container'); container.innerHTML = '';
+
+                if (results.length === 0) {
+                    container.innerHTML = `<div style="padding: 25px; color:#ffb74d; font-family:monospace; text-align:center;">No historical records found for "${term}".</div>`;
+                } else {
+                    results.forEach(row => {
+                        const date = new Date(row.time); const displayDate = `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+                        const div = document.createElement('div'); div.className = 'd1-result-item';
+                        div.innerHTML = `
+                            <div class="d1-result-title"><a href="${row.link}" target="_blank" style="color:inherit; text-decoration:none;">${row.title}</a></div>
+                            <div class="d1-result-meta"><span>${displayDate} | </span><span style="color:var(--accent);">${row.location_name} | </span><span>Source: ${row.source}</span></div>
+                            <div style="font-size: 0.85rem; color:#bbb; line-height:1.4;">${row.desc}</div>`;
+                        container.appendChild(div);
+                    });
+                }
+                
+                sessionStorage.setItem('activeModal', 'd1-modal-overlay');
+                sessionStorage.setItem('d1SearchTerm', term);
+                if (!fromHistory) pushOverlayState('d1-modal-overlay');
+                document.getElementById('d1-modal-overlay').style.display = 'flex';
+                
+            } catch (err) { alert("Search Failed: D1 Database Offline"); }
+            btn.innerText = "SEARCH"; btn.disabled = false;
+        }
+
+        document.getElementById('time-slider').addEventListener('input', function(e) {
+            if (allNews.length === 0) return;
+            const val = e.target.value;
+            if (val == 100) {
+                currentScrubTime = Infinity;
+                document.getElementById('playback-label').innerText = "LIVE"; document.getElementById('playback-label').style.color = "var(--accent)";
+            } else {
+                const range = allNews[0].time - allNews[allNews.length - 1].time;
+                currentScrubTime = allNews[allNews.length - 1].time + (range * (val / 100));
+                const scrubDate = new Date(currentScrubTime);
+                document.getElementById('playback-label').innerText = `${scrubDate.toLocaleDateString()} ${scrubDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+                document.getElementById('playback-label').style.color = "#88ecff";
+            }
+            applyFilters();
+        });
+
+        function setFilter(category, btnElement) {
+            currentFilter = category;
+            sessionStorage.setItem('currentFilter', category);
+            document.querySelectorAll('.filter-group .glass-btn:not(.hm-btn)').forEach(btn => btn.classList.remove('active'));
+            btnElement.classList.add('active'); applyFilters();
+        }
+
+        function applyFilters() {
+            const searchQuery = document.getElementById('recon-search').value.toLowerCase();
+            sessionStorage.setItem('reconSearch', searchQuery);
+            
+            filteredNews = allNews.filter(n => {
+                const matchesSearch = n.title.toLowerCase().includes(searchQuery) || n.loc.n.toLowerCase().includes(searchQuery) || n.source.toLowerCase().includes(searchQuery);
+                const matchesCat = currentFilter === 'all' || n.cat.c === currentFilter;
+                const matchesTime = n.time <= currentScrubTime;
+                let matchesGeo = true;
+                if (activeGeofence) matchesGeo = turf.booleanPointInPolygon(turf.point([n.loc.lng, n.loc.lat]), activeGeofence);
+                return matchesSearch && matchesCat && matchesTime && matchesGeo;
+            });
+
+            filteredNews.sort((a, b) => b.time - a.time);
+            displayLimit = 50; document.getElementById('news-list').innerHTML = '';
+            renderMap(); renderSidebar();
+        }
+
+        function renderSidebar() {
+            const list = document.getElementById('news-list');
+            const toRender = filteredNews.slice(list.children.length, displayLimit);
+            
+            toRender.forEach(n => {
+                const li = document.createElement('li'); li.className = 'news-item';
+                const verifiedHTML = n.corroborated ? `<div style="color:var(--accent); font-size: 0.7rem; font-weight: bold; font-family: monospace; display:inline-block; margin-right: 10px;">✅ VERIFIED</div>` : '';
+                const biasHTML = n.cred && n.cred.score < 80 ? `<div style="color:#ffb74d; font-size: 0.7rem; font-family: monospace; display:inline-block;">⚠️ BIAS: ${n.cred.score}</div>` : '';
+                const threatTagHTML = (n.threat_analysis && n.threat_analysis.score > 75) ? `<span class="threat-tag">CRITICAL RISK</span>` : '';
+
+                li.innerHTML = `
+                    <div class="news-title">${n.cat.i} <span style="display:inline-block; max-width:85%;">${n.title} ${threatTagHTML}</span></div>
+                    <span class="news-time">${n.displayDate}</span>
+                    <div style="margin-bottom:6px;">${verifiedHTML}${biasHTML}</div>
+                    <div class="news-meta"><span>${n.source}</span><span class="news-category" style="background:rgba(76,175,80,0.3)">${n.loc.n}</span></div>`;
+                
+                li.onclick = () => {
+                    if(isHeatmapActive) return; 
+                    
+                    if (window.innerWidth <= 768) {
+                        switchMobileTab('map');
+                    }
+
+                    map.flyTo([n.loc.lat, n.loc.lng], 8, { animate: true, duration: 1.0 });
+                    setTimeout(() => {
+                        const k = `${n.loc.lat},${n.loc.lng}`;
+                        if (activeMarkers[k]) {
+                            markersLayer.zoomToShowLayer(activeMarkers[k], () => {
+                                activeMarkers[k].openPopup();
+                                setTimeout(() => {
+                                    const targetItemElement = document.getElementById(`popup-item-${n.id}`);
+                                    if (targetItemElement) {
+                                        targetItemElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                                        targetItemElement.classList.add('flash-active');
+                                        setTimeout(() => { targetItemElement.classList.remove('flash-active'); }, 2500); 
+                                    }
+                                }, 300);
+                            });
+                        }
+                    }, 1000); 
+                };
+                list.appendChild(li);
+            });
+        }
+
+        document.getElementById('news-list').addEventListener('scroll', function() {
+            if (this.scrollTop + this.clientHeight >= this.scrollHeight - 50) {
+                if (displayLimit < filteredNews.length) { displayLimit += 50; renderSidebar(); }
+            }
+        });
+
+        function toggleHeatmap(btnElement) {
+            isHeatmapActive = !isHeatmapActive;
+            isHeatmapActive ? btnElement.classList.add('active') : btnElement.classList.remove('active');
+            renderMap();
+        }
+
+        function renderMap() {
+            markersLayer.clearLayers();
+            clusterPolygonLayer.clearLayers();
+            if(heatLayer) { map.removeLayer(heatLayer); heatLayer = null; }
+            activeMarkers = {};
+
+            if (isHeatmapActive) {
+                heatLayer = L.heatLayer(filteredNews.map(n => [n.loc.lat, n.loc.lng, 1]), { radius: 25, blur: 15, maxZoom: 10, gradient: { 0.4: '#1976d2', 0.6: '#4caf50', 0.8: '#ffb74d', 1.0: '#d32f2f' } }).addTo(map);
+                return; 
+            }
+
+            // --- FEATURE ADDITION: Spatial-Temporal Event Clustering ---
+            if (isClusteringActive && filteredNews.length > 0) {
+                try {
+                    let validPoints = filteredNews.filter(n => n.loc && n.loc.lat && n.loc.lng && !n.hq);
+                    if (validPoints.length > 0) {
+                        let features = validPoints.map(n => turf.point([n.loc.lng, n.loc.lat], { time: n.time, id: n.id }));
+                        let featureCollection = turf.featureCollection(features);
+                        
+                        // Cluster points within 15km
+                        let clustered = turf.clustersDbscan(featureCollection, 15, {units: 'kilometers', minPoints: 5});
+                        
+                        let clusters = {};
+                        turf.propEach(clustered, (currentProperties) => {
+                            if(currentProperties.cluster !== undefined) {
+                                if(!clusters[currentProperties.cluster]) clusters[currentProperties.cluster] = [];
+                                clusters[currentProperties.cluster].push(currentProperties);
+                            }
+                        });
+
+                        Object.values(clusters).forEach(clusterPointsProps => {
+                            if (clusterPointsProps.length >= 5) {
+                                let times = clusterPointsProps.map(p => p.time);
+                                let maxTime = Math.max(...times);
+                                let minTime = Math.min(...times);
+                                
+                                // Temporal Filter: 12 Hours (43,200,000 ms)
+                                if (maxTime - minTime <= 43200000) {
+                                    let pointsGeojson = turf.featureCollection(clusterPointsProps.map(p => {
+                                        let item = validPoints.find(n => n.id === p.id);
+                                        return turf.point([item.loc.lng, item.loc.lat]);
+                                    }));
+                                    let hull = turf.convex(pointsGeojson);
+                                    if (hull) {
+                                        L.geoJSON(hull, {
+                                            style: { color: '#ff5252', weight: 2, fillColor: '#ff5252', fillOpacity: 0.25, dashArray: '4' }
+                                        }).bindPopup(`<div style="font-family:monospace; font-size:0.8rem; color:#ff5252; font-weight:bold; text-align:center;">🚨 ACTIVE OPERATIONS THEATER DETECTED<br><span style="color:#bbb; font-size:0.7rem; font-weight:normal;">${clusterPointsProps.length} kinetic events clustered within 15km over 12hrs.</span></div>`).addTo(clusterPolygonLayer);
+                                    }
+                                }
+                            }
+                        });
+                    }
+                } catch(e) { console.error("Clustering engine skipped execution due to data layout."); }
+            }
+
+            const groups = {};
+            filteredNews.forEach(n => {
+                const k = `${n.loc.lat},${n.loc.lng}`;
+                if (!groups[k]) groups[k] = { ...n.loc, cat: n.cat, items: [] };
+                groups[k].items.push(n);
+            });
+
+            Object.values(groups).forEach(g => {
+                const k = `${g.lat},${g.lng}`;
+                g.items.sort((a, b) => b.time - a.time);
+
+                let popupHtml = `<h4>📍 ${g.n} INTEL ZONE</h4>`;
+                g.items.forEach(news => { 
+                    const corroboratedHTML = news.corroborated ? `<span style="color:var(--accent); font-size:0.7rem; font-family:monospace; margin-right:5px;">✅ VERIFIED</span>` : '';
+                    const credHTML = news.cred && news.cred.score < 80 ? `<span style="color:#ffb74d; font-size:0.7rem; font-family:monospace;">⚠️ CRED: ${news.cred.score}</span>` : '';
+                    popupHtml += `<div class="popup-news-item" id="popup-item-${news.id}"><div style="margin-bottom:3px;">${corroboratedHTML}${credHTML}</div><a onclick="openIntelModal('${news.id}')">${news.cat.i} <span style="margin-top:2px;">${news.title}</span></a><div class="popup-source">${news.displayDate}</div></div>`; 
+                });
+                
+                const icon = L.divIcon({ className: `custom-icon ${g.cat.c}`, html: g.cat.i, iconSize: [26, 26], iconAnchor: [13, 13] });
+                const m = L.marker([g.lat, g.lng], { icon }).bindPopup(popupHtml);
+                markersLayer.addLayer(m); activeMarkers[k] = m;
+            });
+        }
+
+        function exportCSV() {
+            if (filteredNews.length === 0) return alert("No intel to export.");
+            
+            document.getElementById('tools-menu').classList.remove('show');
+            
+            let csvContent = "data:text/csv;charset=utf-8,Time,Category,Location,Headline,Source,Corroborated,CredScore,URL\n";
+            filteredNews.forEach(n => {
+                csvContent += `"${new Date(n.time).toISOString()}","${n.cat.c.replace('icon-', '').toUpperCase()}","${n.loc.n}","${n.title.replace(/"/g, '""')}","${n.source}","${n.corroborated ? 'Yes' : 'No'}","${n.cred.score}","${n.link}"\n`;
+            });
+            const link = document.createElement("a"); link.setAttribute("href", encodeURI(csvContent));
+            link.setAttribute("download", `OSINT_Report_${new Date().getTime()}.csv`);
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        }
+
+        function openIntelModal(newsId, fromHistory = false) {
+            const item = allNews.find(n => n.id === newsId); if (!item) return;
+            activeItemForGraph = item;
+            
+            document.getElementById('intel-title').innerHTML = `${item.cat.i} <span style="margin-top: -2px;">${item.title}</span>`;
+            document.getElementById('intel-date').innerText = `${item.source} • ${item.displayDate}`;
+            document.getElementById('intel-desc').innerHTML = item.desc;
+            document.getElementById('intel-source-btn').href = item.link;
+            document.getElementById('exif-results').style.display = 'none'; document.getElementById('exif-results').innerText = '';
+            
+            const aiBox = document.getElementById('intel-ai-summary-box');
+            const aiText = document.getElementById('intel-ai-summary-text');
+            if (item.ai_summary && typeof item.ai_summary === 'string' && item.ai_summary.trim() !== '' && !item.ai_summary.includes("Disabled")) {
+                aiText.innerText = item.ai_summary;
+                aiBox.style.display = 'block';
+            } else {
+                aiBox.style.display = 'none';
+            }
+
+            // --- FEATURE INTEGRATION: CRITICAL INFRASTRUCTURE ALERT ---
+            const infraAlert = document.getElementById('infra-alert');
+            if (item.critical_infra) {
+                infraAlert.style.display = 'block';
+                infraAlert.innerHTML = `<strong>☢️ CRITICAL INFRASTRUCTURE PROXIMITY:</strong> Event located approx ${item.critical_infra.proximityKm}km from <u>${item.critical_infra.name}</u>. Potential for severe asymmetric disruption.`;
+            } else {
+                infraAlert.style.display = 'none';
+            }
+
+            const mediaContainer = document.getElementById('intel-media-container'); mediaContainer.innerHTML = ''; 
+            if (item.video) { mediaContainer.innerHTML = `<video controls autoplay muted loop src="${item.video}"></video>`; mediaContainer.style.display = 'block'; } 
+            else if (item.image) { mediaContainer.innerHTML = `<img src="${item.image}" alt="Extraction">`; mediaContainer.style.display = 'block'; } 
+            else { mediaContainer.style.display = 'none'; }
+            
+            const metricsContainer = document.getElementById('intel-metrics-container');
+            if (item.threat_analysis) {
+                metricsContainer.style.display = 'block';
+                const scoreClass = item.threat_analysis.score > 75 ? 'val-critical' : (item.threat_analysis.score > 55 ? 'val-elevated' : 'val-stable');
+                document.getElementById('metric-threat').innerText = `${item.threat_analysis.score}/100`; document.getElementById('metric-threat').className = `metric-value ${scoreClass}`;
+                const sentimentPrefix = item.threat_analysis.sentiment > 0 ? '+' : '';
+                document.getElementById('metric-sentiment').innerText = `${sentimentPrefix}${item.threat_analysis.sentiment}`;
+                document.getElementById('metric-vector').innerText = item.threat_analysis.vectorStatus; document.getElementById('metric-vector').className = `metric-value ${scoreClass}`;
+            } else { metricsContainer.style.display = 'none'; }
+
+            const geoAlert = document.getElementById('geo-corridor-alert');
+            if (item.geopolitics) {
+                geoAlert.style.display = 'block';
+                geoAlert.innerHTML = `<strong>⚓ STRATEGIC GEOPOLITICAL OVERLAP DETECTED:</strong> Event located approx ${item.geopolitics.proximityKm}km from the <u>${item.geopolitics.corridorName}</u>.`;
+            } else { geoAlert.style.display = 'none'; }
+            
+            const histAlert = document.getElementById('hist-context-alert');
+            if (item.historical_context) {
+                histAlert.style.display = 'block';
+                histAlert.innerHTML = `<strong>📜 HISTORICAL GEOPOLITICAL CONTEXT:</strong> Event region overlapping <u>${item.historical_context.regionName}</u> (approx ${item.historical_context.proximityKm}km).<br><span style="font-size:0.75rem; color:#d1d5db; display:block; margin-top:4px;">${item.historical_context.summary}</span>`;
+            } else { histAlert.style.display = 'none'; }
+
+            const credBox = document.getElementById('intel-credibility');
+            if (item.cred && item.cred.score < 100) {
+                credBox.style.display = 'block'; credBox.innerHTML = `<strong>⚠️ PROPAGANDA/BIAS ALERT:</strong> Cred Score ${item.cred.score}/100. Flags: ${item.cred.flags.join(', ')}.`;
+            } else { credBox.style.display = 'none'; }
+
+            const exifBtn = document.getElementById('btn-extract-exif');
+            if (item.image) { exifBtn.style.display = 'flex'; exifBtn.setAttribute('data-img', item.image); } else { exifBtn.style.display = 'none'; }
+
+            const graphBtn = document.getElementById('btn-entity-graph');
+            if (item.entities && item.entities.length > 0) graphBtn.style.display = 'flex'; else graphBtn.style.display = 'none';
+
+            sessionStorage.setItem('activeModal', 'intel-modal-overlay');
+            sessionStorage.setItem('activeNewsId', newsId);
+            
+            if (!fromHistory) pushOverlayState('intel-modal-overlay');
+            document.getElementById('intel-modal-overlay').style.display = 'flex';
+        }
+
+        async function extractEXIF() {
+            const btn = document.getElementById('btn-extract-exif'); const resultBox = document.getElementById('exif-results');
+            const imgUrl = btn.getAttribute('data-img');
+            btn.innerText = "⏳ Extracting..."; resultBox.style.display = 'block'; resultBox.innerText = `Parsing EXIF from:\n${imgUrl}\n...`;
+            try {
+                const output = await exifr.parse(imgUrl);
+                if (output) { resultBox.innerText = JSON.stringify(output, null, 2); btn.innerText = "✅ EXIF Extracted"; } 
+                else { resultBox.innerText = "Operation Failed: Payload stripped or CORS blocked."; btn.innerText = "❌ EXIF Missing"; }
+            } catch (error) { resultBox.innerText = "Operation Failed: Payload stripped or CORS blocked."; btn.innerText = "❌ EXIF Error"; }
+        }
+
+        function openGraphModal(isMacro = false, fromHistory = false) {
+            
+            if (document.getElementById('tools-menu').classList.contains('show')) {
+                document.getElementById('tools-menu').classList.remove('show');
+                if (!fromHistory) history.replaceState({ opened: 'graph-modal-overlay' }, "");
+            } else {
+                if (!fromHistory) pushOverlayState('graph-modal-overlay');
+            }
+            
+            sessionStorage.setItem('activeModal', 'graph-modal-overlay');
+            sessionStorage.setItem('isMacroGraph', isMacro);
+            
+            document.getElementById('graph-modal-overlay').style.display = 'flex';
+            
+            let nodes = new vis.DataSet([]); let edges = new vis.DataSet([]);
+            if (!isMacro) {
+                if (!activeItemForGraph || !activeItemForGraph.entities) return;
+                document.getElementById('graph-modal-title').innerText = "LINK ANALYSIS: LOCAL ENTITY GRAPH";
+                nodes.add({ id: 0, label: activeItemForGraph.loc.n, color: '#ff5252', font: {color: 'white'}, shape: 'box' });
+                activeItemForGraph.entities.forEach((ent, i) => {
+                    if (ent.n !== activeItemForGraph.loc.n) {
+                        nodes.add({ id: i+1, label: ent.n, color: '#1976d2', font: {color: 'white'} });
+                        edges.add({ from: 0, to: i+1, color: {color: '#888'} });
+                    }
+                });
+            } else {
+                if (filteredNews.length === 0) return;
+                document.getElementById('graph-modal-title').innerText = "LINK ANALYSIS: GLOBAL MACRO NETWORK";
+                let uniqueNodes = {}; let nodeIdCounter = 1;
+                filteredNews.forEach(article => {
+                    if (!article.loc || !article.entities) return;
+                    let locName = article.loc.n;
+                    if (!uniqueNodes[locName]) {
+                        uniqueNodes[locName] = nodeIdCounter++;
+                        nodes.add({ id: uniqueNodes[locName], label: locName, color: '#ff5252', font: {color: 'white'}, shape: 'box' });
+                    }
+                    article.entities.forEach(ent => {
+                        if (ent.n !== locName) {
+                            if (!uniqueNodes[ent.n]) {
+                                uniqueNodes[ent.n] = nodeIdCounter++;
+                                nodes.add({ id: uniqueNodes[ent.n], label: ent.n, color: '#1976d2', font: {color: 'white'} });
+                            }
+                            edges.add({ from: uniqueNodes[locName], to: uniqueNodes[ent.n], color: {color: '#888', opacity: 0.3} });
+                        }
+                    });
+                });
+            }
+            new vis.Network(document.getElementById('network-graph'), { nodes: nodes, edges: edges }, { physics: { stabilization: false, barnesHut: { springLength: 100 } } });
+        }
+
+        function toggleAutoSync() {
+            isAutoSync = !isAutoSync;
+            const btn = document.getElementById('auto-sync-btn');
+            if (isAutoSync) { btn.classList.add('active'); autoSyncTimer = 60; } 
+            else { btn.classList.remove('active'); document.getElementById('sync-timer').innerText = "OFF"; }
+        }
+
+        setInterval(() => {
+            if (isAutoSync && !isFetching) {
+                autoSyncTimer--;
+                if (autoSyncTimer <= 0) { fetchIntel(); } 
+                else { document.getElementById('sync-timer').innerText = `0${Math.floor(autoSyncTimer / 60)}:${(autoSyncTimer % 60).toString().padStart(2, '0')}`; }
+            }
+        }, 1000);
+
+        if (sessionStorage.getItem('airbasesActive') === 'true') { airbasesActive = false; toggleAirbases(true); }
+        if (sessionStorage.getItem('armyBasesActive') === 'true') { armyBasesActive = false; toggleArmyBases(true); }
+
+        async function initAirbases() {
+            const csvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSGDHgHF6njpPsmVwKteXSVje1nPVh980bK6MnQgJ_aGDOi9vP_ag6JMgGBgKFrE74W1DjxgzI742rD/pub?gid=223259317&single=true&output=csv";
+            try {
+                const response = await fetch(csvUrl, { cache: "no-store" }); const csvText = await response.text();
+                const lines = csvText.split('\n');
+                for (let i = 1; i < lines.length; i++) {
+                    const line = lines[i].trim(); if (!line) continue;
+                    let cols = []; let inQuotes = false; let val = '';
+                    for (let char of line) {
+                        if (char === '"') inQuotes = !inQuotes; else if (char === ',' && !inQuotes) { cols.push(val.trim()); val = ''; } else val += char;
+                    }
+                    cols.push(val.trim());
+                    if (cols.length < 4) continue;
+                    
+                    const country = cols[0]; const name = cols[1]; const type = cols[2]; const coordsStr = cols[3];
+                    const nums = coordsStr.match(/\d+(?:\.\d+)?/g); const dirs = coordsStr.match(/[NSEW]/gi);
+                    
+                    if (nums && nums.length >= 6 && dirs && dirs.length >= 2) {
+                        let lat = parseFloat(nums[0]) + parseFloat(nums[1])/60 + parseFloat(nums[2])/3600; if (dirs[0].toUpperCase() === 'S') lat *= -1;
+                        let lng = parseFloat(nums[3]) + parseFloat(nums[4])/60 + parseFloat(nums[5])/3600; if (dirs[1].toUpperCase() === 'W') lng *= -1;
+                        
+                        const isCivil = type.toLowerCase().includes('civil'); const iconColor = isCivil ? '#ba68c8' : '#e53935'; 
+                        
+                        const popupHTML = `<div style="font-family:monospace; min-width: 180px;">
+                            <h4 style="margin:0 0 5px 0; color:${iconColor}; font-size:1rem; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:3px;">✈️ ${name}</h4>
+                            <div style="font-size:0.75rem; color:#bbb; line-height:1.4;"><strong>Country:</strong> ${country}<br><strong>Type:</strong> ${type}<br><strong>Coords:</strong> ${coordsStr}</div></div>`;
+                        
+                        const flightIcon = L.divIcon({
+                            className: 'custom-flight-icon',
+                            html: `<svg style="filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.9));" width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5L21 16z" fill="${iconColor}" stroke="#fff" stroke-width="0.5"/></svg>`,
+                            iconSize: [14, 14], iconAnchor: [7, 7]
+                        });
+                        
+                        L.marker([lat, lng], { icon: flightIcon, zIndexOffset: -1000 }).bindPopup(popupHTML).addTo(airbaseLayer);
+                    }
+                }
+            } catch (err) {}
+        }
+
+        async function initArmyBases() {
+            const csvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSGDHgHF6njpPsmVwKteXSVje1nPVh980bK6MnQgJ_aGDOi9vP_ag6JMgGBgKFrE74W1DjxgzI742rD/pub?gid=1395980463&single=true&output=csv";
+            try {
+                const response = await fetch(csvUrl, { cache: "no-store" }); const csvText = await response.text();
+                const lines = csvText.split('\n');
+                for (let i = 1; i < lines.length; i++) {
+                    const line = lines[i].trim(); if (!line) continue;
+                    
+                    let cols = []; let inQuotes = false; let val = '';
+                    for (let char of line) {
+                        if (char === '"') inQuotes = !inQuotes; else if (char === ',' && !inQuotes) { cols.push(val.trim()); val = ''; } else val += char;
+                    }
+                    cols.push(val.trim());
+                    if (cols.length < 4) continue;
+                    
+                    const name = cols[0]; const coordsStr = cols[1]; const operator = cols[2]; const detachment = cols[3]; const details = cols[4] ? cols[4] : '';
+                    const nums = coordsStr.match(/\d+(?:\.\d+)?/g); const dirs = coordsStr.match(/[NSEW]/gi);
+                    
+                    if (nums && nums.length >= 6 && dirs && dirs.length >= 2) {
+                        let lat = parseFloat(nums[0]) + parseFloat(nums[1])/60 + parseFloat(nums[2])/3600; if (dirs[0].toUpperCase() === 'S') lat *= -1;
+                        let lng = parseFloat(nums[3]) + parseFloat(nums[4])/60 + parseFloat(nums[5])/3600; if (dirs[1].toUpperCase() === 'W') lng *= -1;
+                        
+                        const iconColor = '#4caf50';
+                        const popupHTML = `<div style="font-family:monospace; min-width: 220px; max-width: 300px;">
+                            <h4 style="margin:0 0 5px 0; color:${iconColor}; font-size:1rem; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:3px;">🛡️ ${name}</h4>
+                            <div style="font-size:0.75rem; color:#bbb; line-height:1.4;"><strong>Operator:</strong> ${operator}<br><strong>Foreign Detachment:</strong> ${detachment}<br><strong>Coords:</strong> ${coordsStr}<br>${details ? `<div style="margin-top: 5px; padding-top: 5px; border-top: 1px dashed rgba(255,255,255,0.1);"><em>${details}</em></div>` : ''}</div></div>`;
+                        
+                        const armyIcon = L.divIcon({
+                            className: 'custom-army-icon',
+                            html: `<svg style="filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.9));" width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z" fill="${iconColor}" stroke="#fff" stroke-width="1"/></svg>`,
+                            iconSize: [14, 14], iconAnchor: [7, 7]
+                        });
+                        
+                        L.marker([lat, lng], { icon: armyIcon, zIndexOffset: -1000 }).bindPopup(popupHTML).addTo(armyBaseLayer);
+                    }
+                }
+            } catch (err) {}
+        }
+
+        fetchIntel(); initAirbases(); initArmyBases(); loadCustomLayersFromStorage();
+    </script>
+</body>
+</html>
