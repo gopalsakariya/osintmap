@@ -215,6 +215,21 @@
         .leaflet-control-layers-toggle { background-color: rgba(0,0,0,0.5) !important; border: 1px solid var(--glass-border); border-radius: 4px; backdrop-filter: blur(5px);}
         .leaflet-control-layers-expanded { background: var(--glass-bg) !important; color: #fff; border: 1px solid var(--glass-border) !important; font-family: monospace; font-size: 0.8rem; backdrop-filter: blur(10px);}
 
+        /* CUSTOM FEATURES LAYER CONTROL STYLING */
+        .custom-features-control .leaflet-control-layers-toggle {
+            background-image: none !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .custom-features-control .leaflet-control-layers-toggle::after {
+            content: "🛠️";
+            font-size: 1.2rem;
+        }
+        .custom-features-control label {
+            color: #d1d5db;
+        }
+
         /* --- MODALS --- */
         .modal-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(5px); z-index: 5000; display: none; align-items: center; justify-content: center; }
         .modal-container { background: rgba(13, 18, 15, 0.95); border: 1px solid var(--glass-border); width: 90%; max-width: 700px; max-height: 85vh; border-radius: 6px; box-shadow: 0 10px 40px rgba(0,0,0,0.9); display: flex; flex-direction: column; overflow: hidden; }
@@ -299,12 +314,12 @@
             /* PERFECT MOBILE MODAL FIX */
             .modal-overlay {
                 align-items: center; 
-                padding: 25px 10px 25px 10px; /* Top, Right, Bottom, Left */
+                padding: 25px 10px 25px 10px; 
                 box-sizing: border-box;
             }
             .modal-container {
                 height: 100%; 
-                max-height: 100%; /* Overrides the desktop 85vh limit */
+                max-height: 100%; 
                 width: 100%;
                 margin: 0; 
             }
@@ -320,7 +335,7 @@
                 <div id="radar-light" class="radar-pulse"></div>
                 OSINT CORE
             </div>
-            <span id="sync-timer">01:00</span>
+            <span id="sync-timer">LIVE</span>
             <button id="auto-sync-btn" class="glass-btn active" onclick="toggleAutoSync()">AUTO</button>
             <button id="manual-sync-btn" class="glass-btn" onclick="fetchIntel()">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2v4c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6h4c0 5.52-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2zm10 4h-4V2l5 4z"/></svg>
@@ -337,8 +352,7 @@
         </div>
 
         <div class="top-group">
-            <button class="glass-btn toggle-layer-btn" id="btn-airbase" onclick="toggleAirbases()">✈️ AIRBASES: OFF</button>
-            <button class="glass-btn toggle-layer-btn" id="btn-armybase" onclick="toggleArmyBases()">🛡️ ARMY BASES: OFF</button>
+            <!-- Toggles moved to Leaflet map control -->
             
             <div class="dropdown">
                 <button class="glass-btn drop-btn" onclick="toggleDropdown('tools-menu', event)">⚙️ TOOLS ▼</button>
@@ -352,9 +366,8 @@
         <button class="glass-btn" onclick="openGraphModal(true)" style="width:100%; margin-bottom:10px; border-color: #66b2ff;">🌐 GENERATE MACRO GRAPH</button>
         <button class="glass-btn" onclick="openCustomLayerModal()" style="width:100%; margin-bottom:10px; border-color: #ba68c8;">🗺️ CUSTOM MAP LAYERS</button>
         
-        <!-- FEATURE ADDITION: THEATER CLUSTERING & AI CHAT TOGGLES -->
+        <!-- FEATURE ADDITION: THEATER CLUSTERING TOGGLE -->
         <button class="glass-btn toggle-layer-btn" id="btn-clustering" onclick="toggleClustering()" style="width:100%; margin-bottom:10px; border-color: #ff5252;">🧬 THEATER CLUSTERING: OFF</button>
-        
         
         <div style="font-family: monospace; font-size: 0.7rem; color: #888; margin-bottom: 5px; font-weight:bold;">CATEGORY FILTERS</div>
         <div class="filter-group" id="filter-container"></div>
@@ -397,12 +410,6 @@
                         <span id="intel-date">Date</span>
                         
                         <div id="intel-media-container" style="display:none;"></div>
-
-                        <!-- NATIVE AI BRIEFING SUMMARY BOX (Silent if empty) -->
-                        <div id="intel-ai-summary-box" class="glass-panel" style="display:none; padding: 12px; margin-bottom: 15px; border-left: 4px solid var(--accent); background: rgba(76, 175, 80, 0.08); font-family: monospace; font-size: 0.85rem;">
-                            <strong style="color: var(--accent); display: block; margin-bottom: 5px;">🤖 NATIVE AI BRIEFING SUMMARY:</strong>
-                            <span id="intel-ai-summary-text" style="color: #e0e0e0; line-height: 1.5;"></span>
-                        </div>
 
                         <!-- FEATURE ADDITION: CRITICAL INFRASTRUCTURE PROXIMITY ALERT -->
                         <div id="infra-alert" class="geo-alert" style="display:none; background: rgba(244, 67, 54, 0.08); border-left: 4px solid #f44336; color: #ffcdd2; margin-bottom: 15px;"></div>
@@ -520,7 +527,7 @@
             // Unconditionally close all modals and dropdowns on back button press
             document.querySelectorAll('.modal-overlay').forEach(el => el.style.display = 'none');
             document.getElementById('tools-menu').classList.remove('show');
-            document.getElementById('ai-chat-panel').classList.remove('show');
+            document.getElementById('ai-chat-panel') && document.getElementById('ai-chat-panel').classList.remove('show');
             sessionStorage.removeItem('activeModal');
             sessionStorage.removeItem('activeDropdown');
             const mediaContainer = document.getElementById('intel-media-container');
@@ -552,7 +559,7 @@
                     document.getElementById(id).classList.add('show');
                     sessionStorage.setItem('activeDropdown', id);
                 } else if (id === 'ai-chat-panel') {
-                    document.getElementById(id).classList.add('show');
+                    document.getElementById(id) && document.getElementById(id).classList.add('show');
                 } else if (id === 'mobile-feed') {
                     if (window.innerWidth <= 768) switchMobileTab('feed', true);
                 }
@@ -571,7 +578,7 @@
             } else {
                 document.querySelectorAll('.modal-overlay').forEach(el => el.style.display = 'none');
                 document.getElementById('tools-menu').classList.remove('show');
-                document.getElementById('ai-chat-panel').classList.remove('show');
+                document.getElementById('ai-chat-panel') && document.getElementById('ai-chat-panel').classList.remove('show');
                 sessionStorage.removeItem('activeModal');
                 sessionStorage.removeItem('activeDropdown');
             }
@@ -656,10 +663,17 @@
         const markersLayer = L.markerClusterGroup({ maxClusterRadius: 40, disableClusteringAtZoom: 12, spiderfyOnMaxZoom: true });
         const airbaseLayer = L.layerGroup();
         const armyBaseLayer = L.layerGroup();
-        // FEATURE ADDITION: THEATER CLUSTERING LAYER
         const clusterPolygonLayer = L.layerGroup().addTo(map); 
         let heatLayer = null;
+
+        const firmsLayer = L.tileLayer.wms("https://firms.modaps.eosdis.nasa.gov/mapserver/wms/fires/9a045820a50308c73271b371e4261a18/", {
+            layers: 'fires_viirs_snpp_24,fires_modis_24',
+            format: 'image/png',
+            transparent: true,
+            attribution: 'NASA FIRMS (24h)'
+        });
         
+        // STANDARD BASEMAP CONTROL
         L.control.layers({ 
             "Tactical Dark": darkMap, 
             "Tactical Light": lightMap,
@@ -671,7 +685,43 @@
             "Intel Nodes": markersLayer
         }, {position: 'bottomleft'}).addTo(map);
         
+        // NEW TACTICAL FEATURES LAYER CONTROL
+        const featureOverlays = {
+            "✈️ Tactical Airbases": airbaseLayer,
+            "🛡️ Army Commands": armyBaseLayer,
+            "🔥 NASA FIRMS (24h)": firmsLayer
+        };
+        const featuresControl = L.control.layers(null, featureOverlays, {position: 'bottomleft'}).addTo(map);
+        
+        // Style the custom features control and inject title
+        const fContainer = featuresControl.getContainer();
+        fContainer.classList.add('custom-features-control');
+        const fForm = fContainer.querySelector('.leaflet-control-layers-list');
+        if(fForm) {
+            const header = document.createElement('div');
+            header.innerHTML = '<div style="font-family:monospace; font-size:0.85rem; color:var(--accent); font-weight:bold; border-bottom:1px solid rgba(255,255,255,0.2); margin-bottom:5px; padding-bottom:5px; text-align:center;">TACTICAL FEATURES</div>';
+            fForm.insertBefore(header, fForm.firstChild);
+        }
+
         map.addLayer(markersLayer);
+
+        // --- MAP LAYER SESSION STORAGE SYNC ---
+        // Restore active states on refresh
+        if (sessionStorage.getItem('airbasesActive') === 'true') { map.addLayer(airbaseLayer); }
+        if (sessionStorage.getItem('armyBasesActive') === 'true') { map.addLayer(armyBaseLayer); }
+        if (sessionStorage.getItem('firmsActive') === 'true') { map.addLayer(firmsLayer); }
+
+        // Update states silently in the background when user checks/unchecks boxes
+        map.on('overlayadd', function(e) {
+            if (e.name === "✈️ Tactical Airbases") sessionStorage.setItem('airbasesActive', 'true');
+            if (e.name === "🛡️ Army Commands") sessionStorage.setItem('armyBasesActive', 'true');
+            if (e.name === "🔥 NASA FIRMS (24h)") sessionStorage.setItem('firmsActive', 'true');
+        });
+        map.on('overlayremove', function(e) {
+            if (e.name === "✈️ Tactical Airbases") sessionStorage.setItem('airbasesActive', 'false');
+            if (e.name === "🛡️ Army Commands") sessionStorage.setItem('armyBasesActive', 'false');
+            if (e.name === "🔥 NASA FIRMS (24h)") sessionStorage.setItem('firmsActive', 'false');
+        });
         
         const drawnItems = new L.FeatureGroup(); map.addLayer(drawnItems);
         map.addControl(new L.Control.Draw({ 
@@ -703,25 +753,6 @@
             applyFilters();
         }
 
-        // --- Custom Toggle Logics with Persistence ---
-        let airbasesActive = false;
-        function toggleAirbases(forceState) {
-            airbasesActive = forceState !== undefined ? forceState : !airbasesActive;
-            sessionStorage.setItem('airbasesActive', airbasesActive);
-            const btn = document.getElementById('btn-airbase');
-            if (airbasesActive) { map.addLayer(airbaseLayer); btn.classList.add('active'); btn.innerText = "✈️ AIRBASES: ON"; } 
-            else { map.removeLayer(airbaseLayer); btn.classList.remove('active'); btn.innerText = "✈️ AIRBASES: OFF"; }
-        }
-
-        let armyBasesActive = false;
-        function toggleArmyBases(forceState) {
-            armyBasesActive = forceState !== undefined ? forceState : !armyBasesActive;
-            sessionStorage.setItem('armyBasesActive', armyBasesActive);
-            const btn = document.getElementById('btn-armybase');
-            if (armyBasesActive) { map.addLayer(armyBaseLayer); btn.classList.add('active'); btn.innerText = "🛡️ ARMY BASES: ON"; } 
-            else { map.removeLayer(armyBaseLayer); btn.classList.remove('active'); btn.innerText = "🛡️ ARMY BASES: OFF"; }
-        }
-
         // --- FEATURE ADDITION: THEATER CLUSTERING LOGIC ---
         let isClusteringActive = false;
         function toggleClustering() {
@@ -740,8 +771,6 @@
             }
             renderMap();
         }
-
-       
 
         // --- LOCAL STORAGE CUSTOM MAP LAYERS ---
         let customMapLayers = {};
@@ -852,6 +881,7 @@
             nameInput.value = '';
             urlInput.value = '';
         }
+
         function triggerProximityAudioAlert() {
             try {
                 let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -869,7 +899,7 @@
         }
 
         let activeMarkers = {}; let allNews = []; let filteredNews = []; 
-        let isFetching = false; let isAutoSync = true; let autoSyncTimer = 60; 
+        let isFetching = false; let isAutoSync = true; 
         let displayLimit = 50; let currentFilter = 'all'; let isHeatmapActive = false;
         let currentScrubTime = Infinity; let activeItemForGraph = null;
 
@@ -892,6 +922,7 @@
             container.innerHTML = html;
         }
 
+        // Original manual fetch functionality preserved
         async function fetchIntel() {
             if (isFetching) return; isFetching = true;
             const btn = document.getElementById('manual-sync-btn'); btn.disabled = true; btn.querySelector('svg').classList.add('spin');
@@ -925,7 +956,6 @@
 
             document.getElementById('radar-light').classList.remove('active'); btn.querySelector('svg').classList.remove('spin');
             btn.disabled = false; isFetching = false;
-            if (isAutoSync) autoSyncTimer = 60; 
 
             // --- INSTANT STATE RESTORATION ON REFRESH ---
             if (!window.hasRestoredState) {
@@ -958,7 +988,7 @@
                         document.getElementById(id).classList.add('show');
                         sessionStorage.setItem('activeDropdown', id);
                     } else if (id === 'ai-chat-panel') {
-                        document.getElementById(id).classList.add('show');
+                        document.getElementById(id) && document.getElementById(id).classList.add('show');
                     } else if (id === 'mobile-feed') {
                         if (window.innerWidth <= 768) switchMobileTab('feed', true);
                     }
@@ -968,6 +998,24 @@
                 }
             }
         }
+
+        // --- PERFORMANCE UPGRADE: DEBOUNCED D1 SEARCH ---
+        let d1SearchTimeout;
+        document.getElementById('d1-search').addEventListener('input', function(e) {
+            clearTimeout(d1SearchTimeout);
+            const term = e.target.value.trim();
+            
+            // Only trigger auto-search if the user types 3 or more characters
+            if (term.length >= 3) {
+                // Change the button text to show it's thinking
+                document.getElementById('d1-search-btn').innerText = "⏳";
+                
+                d1SearchTimeout = setTimeout(() => {
+                    searchD1(); // Calls your existing search function
+                }, 400); // Waits 400ms after typing stops before hitting the database
+            }
+        });
+        // ------------------------------------------------
 
         async function searchD1(fromHistory = false) {
             const input = document.getElementById('d1-search'); const btn = document.getElementById('d1-search-btn');
@@ -1204,14 +1252,7 @@
             document.getElementById('intel-source-btn').href = item.link;
             document.getElementById('exif-results').style.display = 'none'; document.getElementById('exif-results').innerText = '';
             
-            const aiBox = document.getElementById('intel-ai-summary-box');
-            const aiText = document.getElementById('intel-ai-summary-text');
-            if (item.ai_summary && typeof item.ai_summary === 'string' && item.ai_summary.trim() !== '' && !item.ai_summary.includes("Disabled")) {
-                aiText.innerText = item.ai_summary;
-                aiBox.style.display = 'block';
-            } else {
-                aiBox.style.display = 'none';
-            }
+          
 
             // --- FEATURE INTEGRATION: CRITICAL INFRASTRUCTURE ALERT ---
             const infraAlert = document.getElementById('infra-alert');
@@ -1328,23 +1369,111 @@
             new vis.Network(document.getElementById('network-graph'), { nodes: nodes, edges: edges }, { physics: { stabilization: false, barnesHut: { springLength: 100 } } });
         }
 
+        // --- SSE LIVE STREAM CONNECTION ---
+        let evtSource;
+        function connectLiveStream() {
+            if (evtSource) evtSource.close();
+            
+            document.getElementById('sync-timer').innerText = "LIVE";
+            document.getElementById('sync-timer').style.color = "#ff5252";
+            document.getElementById('radar-light').classList.add('active');
+
+            evtSource = new EventSource(AGGREGATOR_URL + "stream");
+
+            evtSource.onmessage = function(event) {
+                const newData = JSON.parse(event.data);
+                
+                // Only process if the data has actually changed or initialized
+                if (newData.length > 0 && (!allNews.length || allNews[0].id !== newData[0].id)) {
+                    const localSessionIdentityCache = new Set(allNews.map(n => n.id));
+                    
+                    allNews = newData;
+                    allNews.forEach(n => {
+                        const d = new Date(n.time);
+                        n.displayDate = `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} • ${d.toLocaleTimeString(undefined, { hour: '2-digit', minute:'2-digit', timeZoneName: 'short' })}`;
+                    });
+
+                    if (document.getElementById('time-slider').value == 100) currentScrubTime = Infinity;
+                    generateFilters(); 
+                    applyFilters();
+
+                    // Check for Geofence Breaches
+                    if (localSessionIdentityCache.size > 0 && activeGeofence) {
+                        let geofenceBreached = false;
+                        allNews.forEach(n => {
+                            if (!localSessionIdentityCache.has(n.id)) {
+                                if(turf.booleanPointInPolygon(turf.point([n.loc.lng, n.loc.lat]), activeGeofence)) geofenceBreached = true;
+                            }
+                        });
+                        if (geofenceBreached) { triggerProximityAudioAlert(); triggerVisualProximityAlert(); }
+                    }
+                    
+                    // Run state restoration hook if it hasn't run yet
+                    if (!window.hasRestoredState) {
+                        window.hasRestoredState = true;
+                        const savedSearch = sessionStorage.getItem('reconSearch');
+                        if (savedSearch) { document.getElementById('recon-search').value = savedSearch; applyFilters(); }
+
+                        const savedFilter = sessionStorage.getItem('currentFilter');
+                        if (savedFilter && savedFilter !== 'all') {
+                            const filterBtn = document.querySelector(`.filter-group .glass-btn[data-filter="${savedFilter}"]`);
+                            if(filterBtn) setFilter(savedFilter, filterBtn);
+                        }
+                        
+                        if (history.state && history.state.opened) {
+                            const id = history.state.opened;
+                            if (id === 'intel-modal-overlay') {
+                                const newsId = sessionStorage.getItem('activeNewsId');
+                                if (newsId) openIntelModal(newsId, true);
+                            } else if (id === 'graph-modal-overlay') {
+                                const isMacro = sessionStorage.getItem('isMacroGraph') === 'true';
+                                openGraphModal(isMacro, true);
+                            } else if (id === 'd1-modal-overlay') {
+                                document.getElementById('d1-modal-overlay').style.display = 'flex';
+                                sessionStorage.setItem('activeModal', id);
+                            } else if (id === 'custom-layer-modal-overlay') {
+                                document.getElementById('custom-layer-modal-overlay').style.display = 'flex';
+                                sessionStorage.setItem('activeModal', id);
+                            } else if (id === 'tools-menu') {
+                                document.getElementById(id).classList.add('show');
+                                sessionStorage.setItem('activeDropdown', id);
+                            } else if (id === 'ai-chat-panel') {
+                                document.getElementById(id) && document.getElementById(id).classList.add('show');
+                            } else if (id === 'mobile-feed') {
+                                if (window.innerWidth <= 768) switchMobileTab('feed', true);
+                            }
+                        } else {
+                            const savedTab = sessionStorage.getItem('mobileTab');
+                            if (savedTab && window.innerWidth <= 768) switchMobileTab(savedTab, true);
+                        }
+                    }
+                }
+            };
+
+            // Auto-reconnect if the server drops the connection
+            evtSource.onerror = function() {
+                evtSource.close();
+                document.getElementById('sync-timer').innerText = "RECONNECT...";
+                document.getElementById('sync-timer').style.color = "#ffb74d";
+                setTimeout(connectLiveStream, 5000);
+            };
+        }
+
+        // Overwrite the Auto-Sync Toggle to control the stream
         function toggleAutoSync() {
             isAutoSync = !isAutoSync;
             const btn = document.getElementById('auto-sync-btn');
-            if (isAutoSync) { btn.classList.add('active'); autoSyncTimer = 60; } 
-            else { btn.classList.remove('active'); document.getElementById('sync-timer').innerText = "OFF"; }
-        }
-
-        setInterval(() => {
-            if (isAutoSync && !isFetching) {
-                autoSyncTimer--;
-                if (autoSyncTimer <= 0) { fetchIntel(); } 
-                else { document.getElementById('sync-timer').innerText = `0${Math.floor(autoSyncTimer / 60)}:${(autoSyncTimer % 60).toString().padStart(2, '0')}`; }
+            if (isAutoSync) { 
+                btn.classList.add('active'); 
+                connectLiveStream(); 
+            } else { 
+                btn.classList.remove('active'); 
+                if (evtSource) evtSource.close();
+                document.getElementById('sync-timer').innerText = "OFF"; 
+                document.getElementById('sync-timer').style.color = "var(--muted)";
+                document.getElementById('radar-light').classList.remove('active');
             }
-        }, 1000);
-
-        if (sessionStorage.getItem('airbasesActive') === 'true') { airbasesActive = false; toggleAirbases(true); }
-        if (sessionStorage.getItem('armyBasesActive') === 'true') { armyBasesActive = false; toggleArmyBases(true); }
+        }
 
         async function initAirbases() {
             const csvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSGDHgHF6njpPsmVwKteXSVje1nPVh980bK6MnQgJ_aGDOi9vP_ag6JMgGBgKFrE74W1DjxgzI742rD/pub?gid=223259317&single=true&output=csv";
@@ -1424,7 +1553,7 @@
             } catch (err) {}
         }
 
-        fetchIntel(); initAirbases(); initArmyBases(); loadCustomLayersFromStorage();
+        connectLiveStream(); initAirbases(); initArmyBases(); loadCustomLayersFromStorage();
 
         if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/service-worker.js');
